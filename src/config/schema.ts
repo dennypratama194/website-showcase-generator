@@ -125,6 +125,14 @@ export type Project = {
     /** video frame size in output px; height follows the capture's aspect ratio when omitted */
     video: { width: number; height?: number; radius: number; x?: number; y?: number };
   };
+  /**
+   * A still cover held at the very start, so feeds that show the first frame as a thumbnail (Dribbble) show the
+   * finished page instead of a black loader. `at` is the film time (s) of the frame to freeze; the whole film,
+   * audio included, then plays after it, untouched.
+   */
+  cover?: { at: number; duration: number };
+  /** suffix for every output file name, so a variant never overwrites the base renders */
+  variant?: string;
   output: {
     width: number;
     height: number;

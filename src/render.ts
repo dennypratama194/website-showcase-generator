@@ -14,7 +14,7 @@ import { renderMedia, renderStill, selectComposition } from '@remotion/renderer'
 import { loadProject } from './config/load';
 import { CHROME_PATH } from './capture/browser';
 import type { SceneManifest } from './capture/engine';
-import { videoRect } from './config/frame';
+import { coverFrames, coverSeconds, totalFrames, variantSuffix, videoRect } from './config/frame';
 
 const log = (...a: unknown[]) => console.log(`[${new Date().toISOString().slice(11, 19)}]`, ...a);
 const sh = (cmd: string, args: string[]) => execFileSync(cmd, args, { stdio: ['ignore', 'inherit', 'inherit'] });
@@ -62,15 +62,41 @@ const sh = (cmd: string, args: string[]) => execFileSync(cmd, args, { stdio: ['i
   }
   if ((project.captions ?? []).length && !fs.existsSync(path.join(pub, 'fonts', 'fonts.css'))) throw new Error(`captions need the site fonts: npm run fonts -- ${name}`);
 
-  const master = path.join(root, preview ? 'preview-master.mp4' : 'master.mov');
+  const sfx = variantSuffix(project);
+  const o = project.output;
+  // audio (when configured) starts with the film, so it is delayed by exactly the cover length to stay in sync
+  const audio = o.audio ? path.resolve('projects', o.audio) : null;
+  const delayMs = Math.round(coverSeconds(project) * 1000);
+  const audioIn = audio ? ['-i', audio] : [];
+  const audioOut = audio
+    ? ['-map', '1:a:0', ...(delayMs ? ['-af', `adelay=${delayMs}:all=1`] : []), '-c:a', 'aac', '-b:a', '320k', '-t', String(totalFrames(project) / project.fps)]
+    : ['-an'];
+  const master = path.join(root, preview ? `preview-master${sfx}.mp4` : `master${sfx}.mov`);
+  const totalSeconds = totalFrames(project) / project.fps;
+
+  // cover: render the chosen frame of the film itself (the composition without a cover) to a lossless PNG,
+  // so the still is pixel-identical to the frame it freezes. Kept in out/<id>/ and copied into public/ for the edit.
+  let cover: string | undefined;
+  if (project.cover) {
+    const f = Math.round(project.cover.at * project.fps);
+    const png = path.join(root, `${project.id}-cover-f${f}.png`);
+    const serveUrl = await bundle({ entryPoint: path.resolve('src/remotion/index.tsx'), publicDir: pub });
+    const baseProps = { project: { ...project, cover: undefined }, clips };
+    const comp = await selectComposition({ serveUrl, id: 'Showcase', inputProps: baseProps, browserExecutable: CHROME_PATH });
+    await renderStill({ serveUrl, composition: comp, inputProps: baseProps, frame: f, output: png, imageFormat: 'png', browserExecutable: CHROME_PATH });
+    fs.mkdirSync(path.join(pub, 'cover'), { recursive: true });
+    fs.copyFileSync(png, path.join(pub, 'cover', path.basename(png)));
+    cover = `cover/${path.basename(png)}`;
+    log(`cover: film frame ${f} (${project.cover.at}s) → ${path.basename(png)}, held ${coverFrames(project)} frames`);
+  }
   // --stills 5,13.5,...: render just these moments as PNGs, to check layout before a full render
   const si = args.indexOf('--stills');
   if (si >= 0) {
     const serveUrl = await bundle({ entryPoint: path.resolve('src/remotion/index.tsx'), publicDir: pub });
-    const inputProps = { project, clips };
+    const inputProps = { project, clips, cover };
     const composition = await selectComposition({ serveUrl, id: 'Showcase', inputProps, browserExecutable: CHROME_PATH });
     for (const t of args[si + 1].split(',').map(Number)) {
-      const out = path.join(root, 'stills', `t${t.toFixed(2)}.png`);
+      const out = path.join(root, 'stills', `t${t.toFixed(2)}${sfx}.png`);
       fs.mkdirSync(path.dirname(out), { recursive: true });
       await renderStill({ serveUrl, composition, inputProps, frame: Math.round(t * project.fps), output: out, browserExecutable: CHROME_PATH });
       log(`still ${out}`);
@@ -81,7 +107,7 @@ const sh = (cmd: string, args: string[]) => execFileSync(cmd, args, { stdio: ['i
   // 3. compose
   log('bundling composition');
   const serveUrl = await bundle({ entryPoint: path.resolve('src/remotion/index.tsx'), publicDir: pub });
-  const inputProps = { project, clips };
+  const inputProps = { project, clips, cover };
   const composition = await selectComposition({ serveUrl, id: 'Showcase', inputProps, browserExecutable: CHROME_PATH });
   log(`rendering ${composition.durationInFrames} frames → ${path.basename(master)}`);
   let last = 0;
@@ -97,34 +123,33 @@ const sh = (cmd: string, args: string[]) => execFileSync(cmd, args, { stdio: ['i
 
   // 4. delivery encode
   const o = project.output;
-  const final = path.join(root, preview ? `${project.id}-preview.mp4` : `${project.id}-showcase-${o.width}x${o.height}-${project.fps}fps.mp4`);
-  const audio = o.audio ? path.resolve(path.dirname(path.resolve('projects')), 'projects', o.audio) : null;
+  const final = path.join(root, preview ? `${project.id}-preview${sfx}.mp4` : `${project.id}-showcase-${o.width}x${o.height}-${project.fps}fps${sfx}.mp4`);
   const vArgs = preview
     ? ['-c:v', 'libx264', '-preset', 'veryfast', '-crf', '20']
     : ['-c:v', 'libx264', '-profile:v', 'high', '-level:v', '4.2', '-preset', o.preset, '-crf', String(o.crf), '-maxrate', o.maxrate, '-bufsize', o.bufsize, '-g', String(project.fps * 2), '-bf', '2'];
   log(`encoding ${path.basename(final)}`);
-  sh('ffmpeg', ['-y', '-loglevel', 'error', '-i', master, ...(audio ? ['-i', audio] : []),
-    '-map', '0:v:0', ...(audio ? ['-map', '1:a:0', '-c:a', 'aac', '-b:a', '320k', '-shortest'] : ['-an']),
+  sh('ffmpeg', ['-y', '-loglevel', 'error', '-i', master, ...audioIn, '-map', '0:v:0', ...audioOut,
     ...vArgs, '-pix_fmt', 'yuv420p', '-r', String(project.fps), '-fps_mode', 'cfr',
     '-color_primaries', 'bt709', '-color_trc', 'bt709', '-colorspace', 'bt709', '-color_range', 'tv',
     '-movflags', '+faststart', final]);
   log(`done: ${final}`);
   }
-  const o = project.output;
 
   // 5. size-capped platform exports (two-pass, so the file lands just under the cap at the best quality it allows)
   const pf = o.platform;
   if (pf && !preview) {
-    const parts = [{ name: 'full', from: 0, to: project.duration }, ...(pf.chapters ?? [])];
+    // chapters are film times; the cover shifts them by its length
+    const cs = coverSeconds(project);
+    const parts = [{ name: 'full', from: 0, to: totalSeconds }, ...(pf.chapters ?? []).map((c) => ({ ...c, from: c.from + (c.from > 0 ? cs : 0), to: c.to + cs }))];
     const W = pf.width ?? o.width;
     const H = Math.round((W * o.height) / o.width / 2) * 2;
     for (const c of parts) {
       const dur = c.to - c.from;
       // 3% headroom for container overhead and rate-control overshoot
       const kbps = Math.floor((pf.maxBytes * 8 * 0.97) / dur / 1000);
-      const out = path.join(root, `${project.id}-${pf.name}-${c.name}.mp4`);
+      const out = path.join(root, `${project.id}-${pf.name}-${c.name}${sfx}.mp4`);
       const log2 = path.join(root, `.x264-${c.name}`);
-      const base = ['-y', '-loglevel', 'error', '-ss', c.from.toFixed(4), '-t', dur.toFixed(4), '-i', master, '-an',
+      const base = ['-y', '-loglevel', 'error', '-ss', c.from.toFixed(4), '-t', dur.toFixed(4), '-i', master,
         '-vf', `scale=${W}:${H}:flags=lanczos`, '-c:v', 'libx264', '-profile:v', 'high', '-preset', 'slow', '-b:v', `${kbps}k`,
         '-maxrate', `${Math.round(kbps * 1.6)}k`, '-bufsize', `${kbps * 3}k`, '-pix_fmt', 'yuv420p', '-r', String(project.fps), '-fps_mode', 'cfr',
         '-color_primaries', 'bt709', '-color_trc', 'bt709', '-colorspace', 'bt709', '-passlogfile', log2];
@@ -132,12 +157,19 @@ const sh = (cmd: string, args: string[]) => execFileSync(cmd, args, { stdio: ['i
       const rate = (k: number) => ['-b:v', `${k}k`, '-maxrate', `${Math.round(k * 1.6)}k`, '-bufsize', `${k * 3}k`];
       const strip = (a: string[]) => { const i = a.indexOf('-b:v'); return [...a.slice(0, i), ...a.slice(i + 6)]; };
       const common = strip(base);
-      sh('ffmpeg', [...common, ...rate(kbps), '-pass', '1', '-f', 'mp4', '/dev/null']);
+      sh('ffmpeg', [...common, ...rate(kbps), '-an', '-pass', '1', '-f', 'mp4', '/dev/null']);
+      // audio goes in as a second input straight after the master (input options must precede their -i); only for
+      // parts that start at 0, where the delayed track lines up as-is
+      const withAudio = (args: string[]) => {
+        if (!audio || c.from !== 0) return [...args, '-an'];
+        const i = args.indexOf(master) + 1;
+        return [...args.slice(0, i), ...audioIn, ...args.slice(i), '-map', '0:v:0', ...audioOut];
+      };
       // two-pass rate control can overshoot a few percent: re-run pass 2 scaled by the measured overshoot until it fits
       let k = kbps;
       let size = 0;
       for (let attempt = 0; attempt < 4; attempt++) {
-        sh('ffmpeg', [...common, ...rate(k), '-pass', '2', '-movflags', '+faststart', out]);
+        sh('ffmpeg', [...withAudio([...common, ...rate(k)]), '-pass', '2', '-movflags', '+faststart', out]);
         size = fs.statSync(out).size;
         log(`  ${path.basename(out)}: ${(size / 1e6).toFixed(2)} MB at ${k} kb/s ${size <= pf.maxBytes ? 'ok' : 'over, retrying lower'}`);
         if (size <= pf.maxBytes) break;

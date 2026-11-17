@@ -13,7 +13,7 @@ import path from 'node:path';
 import { execFileSync, spawn } from 'node:child_process';
 import { loadProject } from './config/load';
 import { layout } from './config/check';
-import { videoRect } from './config/frame';
+import { coverSeconds, totalFrames, variantSuffix, videoRect } from './config/frame';
 
 const run = (cmd: string, args: string[]) => execFileSync(cmd, args, { maxBuffer: 1 << 28 }).toString();
 
@@ -58,7 +58,7 @@ function sharpness(g: Uint8Array, w: number, h: number) {
   const args = process.argv.slice(2).filter((a) => a !== '--capped');
   const project = await loadProject(args[0]);
   const root = path.resolve('out', project.id);
-  const file = args[1] ? path.resolve(args[1]) : path.join(root, `${project.id}-showcase-${project.output.width}x${project.output.height}-${project.fps}fps.mp4`);
+  const file = args[1] ? path.resolve(args[1]) : path.join(root, `${project.id}-showcase-${project.output.width}x${project.output.height}-${project.fps}fps${variantSuffix(project)}.mp4`);
   const vdir = path.join(root, 'validation', path.basename(file, '.mp4'));
   fs.mkdirSync(vdir, { recursive: true });
   const fails: string[] = [];
@@ -73,7 +73,8 @@ function sharpness(g: Uint8Array, w: number, h: number) {
   const frames = Number(v.nb_read_frames);
   const dur = Number(probe.format.duration);
   const kbps = Math.round(Number(probe.format.bit_rate) / 1000);
-  const expectFrames = Math.round(project.duration * project.fps);
+  const expectFrames = totalFrames(project);
+  const cs = coverSeconds(project);
   const isPreview = file.includes('preview');
   const check = (ok: boolean, msg: string) => (ok ? notes : fails).push(`${ok ? 'ok  ' : 'FAIL'} ${msg}`);
   check(v.codec_name === 'h264', `codec ${v.codec_name} ${v.profile}`);
@@ -88,7 +89,7 @@ function sharpness(g: Uint8Array, w: number, h: number) {
     if (capped && project.output.platform) check(fs.statSync(file).size <= project.output.platform.maxBytes, `size ${fs.statSync(file).size} bytes ≤ ${project.output.platform.name} cap ${project.output.platform.maxBytes} (${kbps} kb/s)`);
     else check(kbps >= floor, `bitrate ${kbps} kb/s (floor ${floor} for ${vr.w}x${vr.h} of footage)`);
   }
-  check(Math.abs(dur - project.duration) < 0.05, `duration ${dur.toFixed(3)} s`);
+  check(Math.abs(dur - expectFrames / project.fps) < 0.05, `duration ${dur.toFixed(3)} s${cs ? ` (${cs} s cover + ${project.duration} s film)` : ''}`);
   check(v.pix_fmt === 'yuv420p', `pixel format ${v.pix_fmt}, colour ${v.color_primaries ?? '?'}/${v.color_transfer ?? '?'}/${v.color_space ?? '?'}`);
   notes.push(`info audio streams: ${a.length}${a.length ? '' : ' (site has no audio; none configured)'}`);
 
@@ -128,12 +129,13 @@ function sharpness(g: Uint8Array, w: number, h: number) {
   const L = layout(project);
   const picks = new Map<number, string>();
   const add = (t: number, why: string) => picks.set(Math.min(frames - 1, Math.max(0, Math.round(t * fps))), why);
+  if (cs) { add(0, 'cover first'); add(cs - 1 / fps, 'cover last'); }
   L.forEach(({ shot, start, end }, i) => {
-    add(start + 2 / fps, `shot ${i + 1} first`);
-    add((start + end) / 2, `shot ${i + 1} middle`);
-    add(end - 2 / fps, `shot ${i + 1} last`);
+    add(cs + start + 2 / fps, `shot ${i + 1} first`);
+    add(cs + (start + end) / 2, `shot ${i + 1} middle`);
+    add(cs + end - 2 / fps, `shot ${i + 1} last`);
   });
-  for (const t of [1.0, 2.0, 2.8, 3.6, 5.0, 7.0, 8.2, 9.1, 10.0, 10.8, 11.6, 13.0, 14.0, 15.4, 16.9, 18.2, 19.5, 20.6, 22.4, 23.6, 24.4]) if (t < project.duration) add(t, `beat ${t}s`);
+  for (const t of [1.0, 2.0, 2.8, 3.6, 5.0, 7.0, 8.2, 9.1, 10.0, 10.8, 11.6, 13.0, 14.0, 15.4, 16.9, 18.2, 19.5, 20.6, 22.4, 23.6, 24.4]) if (t < project.duration) add(cs + t, `beat film ${t}s`);
   const rows: string[] = [];
   for (const [f, why] of [...picks.entries()].sort((a, b) => a[0] - b[0])) {
     const t = f / fps;

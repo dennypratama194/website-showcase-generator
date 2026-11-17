@@ -1,14 +1,16 @@
 import React, { useEffect, useState } from 'react';
-import { AbsoluteFill, OffthreadVideo, Sequence, continueRender, delayRender, interpolate, staticFile, useCurrentFrame, useVideoConfig } from 'remotion';
+import { AbsoluteFill, Img, OffthreadVideo, Sequence, continueRender, delayRender, interpolate, staticFile, useCurrentFrame, useVideoConfig } from 'remotion';
 import type { Caption, Project, Shot } from '../config/schema';
 import { EASE, clamp01 } from '../config/ease';
 import { layout } from '../config/check';
-import { videoRect } from '../config/frame';
+import { coverFrames, videoRect } from '../config/frame';
 
 export type ShowcaseProps = {
   project: Project;
   /** per scene: file under public/clips to read (the 1080 lanczos copy unless a shot zooms) */
   clips: Record<string, string>;
+  /** public path of the cover PNG (an exact frame of this same composition), when project.cover is set */
+  cover?: string;
 };
 
 /** One shot: the captured footage, its virtual camera, and its own in/out transitions. */
@@ -88,12 +90,22 @@ const CaptionView: React.FC<{ c: Caption; dur: number }> = ({ c, dur }) => {
   );
 };
 
-export const Showcase: React.FC<ShowcaseProps> = ({ project, clips }) => {
+export const Showcase: React.FC<ShowcaseProps> = ({ project, clips, cover }) => {
   const { fps } = useVideoConfig();
   const captions = project.captions ?? [];
   useFonts(captions);
   const r = videoRect(project);
+  const cf = coverFrames(project);
   return (
+    <AbsoluteFill>
+      {/* the cover: one exact frame of the film, held as a still before anything plays */}
+      {cf > 0 && cover && (
+        <Sequence from={0} durationInFrames={cf} name="cover">
+          <Img src={staticFile(cover)} style={{ width: '100%', height: '100%' }} />
+        </Sequence>
+      )}
+      {/* the film, shifted whole by the cover length: every shot, transition and caption keeps its relative timing */}
+      <Sequence from={cf} name="film">
     <AbsoluteFill style={{ background: project.presentation?.background ?? '#000' }}>
       {/* the film: shots, dissolves and fades all live inside the (optionally rounded) video frame */}
       <div style={{ position: 'absolute', left: r.x, top: r.y, width: r.w, height: r.h, borderRadius: r.radius, overflow: 'hidden', background: '#000', isolation: 'isolate' }}>
@@ -115,6 +127,8 @@ export const Showcase: React.FC<ShowcaseProps> = ({ project, clips }) => {
           </Sequence>
         );
       })}
+    </AbsoluteFill>
+      </Sequence>
     </AbsoluteFill>
   );
 };

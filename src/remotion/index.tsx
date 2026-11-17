@@ -1,6 +1,7 @@
 import React from 'react';
 import { Composition, registerRoot } from 'remotion';
 import { Showcase, type ShowcaseProps } from './Showcase';
+import { totalFrames } from '../config/frame';
 
 const Root: React.FC = () => (
   <Composition
@@ -14,7 +15,7 @@ const Root: React.FC = () => (
     defaultProps={{ project: null, clips: {} } as unknown as Record<string, unknown>}
     calculateMetadata={({ props }) => {
       const { project } = props as unknown as ShowcaseProps;
-      return { width: project.output.width, height: project.output.height, fps: project.fps, durationInFrames: Math.round(project.duration * project.fps) };
+      return { width: project.output.width, height: project.output.height, fps: project.fps, durationInFrames: totalFrames(project) };
     }}
   />
 );

@@ -15,6 +15,12 @@ npm run match    -- <id> <scene> <sel> <x0,x1> <y>  # scroll offset that reprodu
 npm run render   -- dennypratama --stills 5,15     # single composed frames, ~1 min, for layout checks
 ```
 
+**Cover frame.** Feeds that use a video's first frame as its thumbnail (Dribbble) would show a black loader.
+`cover: { at, duration }` renders film frame `at` to a lossless PNG (`out/<id>/<id>-cover-f<frame>.png`), holds it
+for `duration` (0.5 s) and shifts the whole film, audio included, after it. Keep it in a variant config
+(`projects/dennypratama-cover.config.ts`: `{ ...base, variant: 'cover', cover }`) so outputs get a `-cover` suffix and
+reuse the same captures. Pick `at` with `render --stills`: a fully loaded hero, nothing mid-animation, cursor clear.
+
 The one deliverable is `out/<project>/<project>-showcase.mp4`: with `output.platform` set (Dribbble: 20 MB) it is
 the two-pass, size-capped full-length file; otherwise the master.
 
