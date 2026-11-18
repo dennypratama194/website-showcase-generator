@@ -2,13 +2,36 @@
   "name": "website-showcase-generator",
   "version": "1.0.0",
   "private": true,
-  "description": "Config-driven cinematic website showcase videos: Playwright capture on a virtual clock, Remotion composition, FFmpeg delivery.",
+  "description": "Turn any live website into a cinematic, frame-accurate showcase video. Playwright capture on a virtual clock, Remotion edit, FFmpeg delivery. Dribbble-ready out of the box.",
+  "license": "MIT",
+  "author": "Denny Pratama",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/dennypratama194/website-showcase-generator.git"
+  },
+  "homepage": "https://github.com/dennypratama194/website-showcase-generator#readme",
+  "keywords": [
+    "website-video",
+    "showcase",
+    "dribbble",
+    "remotion",
+    "playwright",
+    "ffmpeg",
+    "portfolio",
+    "screen-recording",
+    "claude-skill"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
   "type": "module",
   "scripts": {
     "probe": "tsx src/capture/probe.ts",
     "capture": "tsx src/capture/capture.ts",
     "render": "tsx src/render.ts",
     "make": "tsx src/make.ts",
+    "new": "tsx src/auto.ts",
+    "doctor": "tsx src/doctor.ts",
     "preview": "tsx src/render.ts --preview",
     "validate": "tsx src/validate.ts",
     "fonts": "tsx src/fonts.ts",

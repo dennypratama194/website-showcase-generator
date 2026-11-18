@@ -87,7 +87,8 @@ function sharpness(g: Uint8Array, w: number, h: number) {
     const vr = videoRect(project);
     const floor = Math.round((8000 * vr.w * vr.h) / (1920 * 1080));
     if (capped && project.output.platform) check(fs.statSync(file).size <= project.output.platform.maxBytes, `size ${fs.statSync(file).size} bytes ≤ ${project.output.platform.name} cap ${project.output.platform.maxBytes} (${kbps} kb/s)`);
-    else check(kbps >= floor, `bitrate ${kbps} kb/s (floor ${floor} for ${vr.w}x${vr.h} of footage)`);
+    // CRF encodes spend few bits on simple pages, so a low rate alone is not a defect: sharpness is checked frame by frame below
+    else notes.push(`${kbps >= floor ? 'ok  ' : 'info'} bitrate ${kbps} kb/s${kbps >= floor ? '' : ` (below ${floor}: fine for a simple, flat page; sharpness is checked per frame)`}`);
   }
   check(Math.abs(dur - expectFrames / project.fps) < 0.05, `duration ${dur.toFixed(3)} s${cs ? ` (${cs} s cover + ${project.duration} s film)` : ''}`);
   check(v.pix_fmt === 'yuv420p', `pixel format ${v.pix_fmt}, colour ${v.color_primaries ?? '?'}/${v.color_transfer ?? '?'}/${v.color_space ?? '?'}`);

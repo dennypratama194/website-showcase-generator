@@ -4,7 +4,7 @@ import { NAME_SHIM, VIRTUAL_CLOCK_SCRIPT } from './virtualClock';
 import { CHROME_ARGS, CHROME_PATH } from './browser';
 import fs from 'node:fs';
 
-const url = process.argv[2] ?? 'https://dennypratama.com/?tunnel=force';
+const url = process.argv[2] ?? 'https://example.com';
 const out = process.argv[3] ?? 'out/probe';
 fs.mkdirSync(out, { recursive: true });
 
