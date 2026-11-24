@@ -89,6 +89,11 @@ frame inspection, contact sheet), `npm run match` (find the scroll offset that r
 With the Claude skill `website-showcase-video`, you paste a URL and Claude runs all of this for you, reads the site,
 and builds the storyboard.
 
+The skill is in [`skills/website-showcase-video/SKILL.md`](skills/website-showcase-video/SKILL.md). Copy that folder into
+`~/.claude/skills/` for Claude Code, or upload it as a skill in Claude. It covers the storyboard workflow and the craft
+rules learned from real captures: 1440x900 framing at a 16:10 viewport, one continuous take, 1x capture for speed, and
+a zero-lag check on the scroll trace so pinned sections never shake.
+
 ## Troubleshooting
 
 - **"Not ready"**: run `npm run doctor` and follow what it says.
